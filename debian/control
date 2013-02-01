@@ -19,4 +19,18 @@ Pre-Depends: dpkg (>= 1.15.6~)
 Depends: ${python:Depends}, ${misc:Depends}, python-json-pointer
 Description: library to apply JSON patches
  Python-json-patch is a Python module (a library) to apply JSON Patches
- according to http://tools.ietf.org/html/draft-ietf-appsawg-json-patch-08
+ according to the IETF draft specification.
+ .
+ From the IETF site:
+ .
+ JavaScript Object Notation (JSON) [RFC4627] is a common format for the
+ exchange and storage of structured data.  HTTP PATCH [RFC5789] extends the
+ Hypertext Transfer Protocol (HTTP) [RFC2616] with a method to perform partial
+ modifications to resources.
+ .
+ JSON Patch is a format (identified by the media type "application/
+ json-patch") for expressing a sequence of operations to apply to a target JSON
+ document, suitable for use with the HTTP PATCH method.
+ .
+ This format is also potentially useful in other cases when it's necessary to
+ make partial updates to a JSON document.
