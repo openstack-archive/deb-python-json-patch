@@ -1,3 +1,10 @@
+python-json-patch (0.12-2) experimental; urgency=low
+
+  * Now running the unit tests, thanks to Michael Terry <mterry@ubuntu.com>
+    for the patch (Closes: #702443).
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 09 Mar 2013 00:03:11 +0800
+
 python-json-patch (0.12-1) experimental; urgency=low
 
   * Initial release (Closes: #699508).
