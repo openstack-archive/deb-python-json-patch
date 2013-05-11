@@ -1,3 +1,10 @@
+python-json-patch (1.0-1) unstable; urgency=low
+
+  * Uploading to unstable.
+  * New upstream release.
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 11 May 2013 07:06:15 +0000
+
 python-json-patch (0.12-2) experimental; urgency=low
 
   * Now running the unit tests, thanks to Michael Terry <mterry@ubuntu.com>
