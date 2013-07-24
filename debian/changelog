@@ -1,4 +1,4 @@
-python-json-patch (1.0-3) unstable; urgency=low
+python-json-patch (1.0-2) unstable; urgency=low
 
   * Ran wrap-and-sort.
   * Adds python3 support.
