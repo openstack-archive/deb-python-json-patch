@@ -1,10 +1,11 @@
-python-json-patch (1.0-3) UNRELEASED; urgency=low
+python-json-patch (1.0-3) unstable; urgency=low
 
   * Ran wrap-and-sort.
   * Adds python3 support.
   * Adds patch to fix unit tests for python3.
   * Adds README.md in docs.
   * Cleans correctly (can build twice the package).
+  * Standards-Version: 3.9.4
 
  -- Thomas Goirand <zigo@debian.org>  Wed, 24 Jul 2013 11:25:29 +0800
 
