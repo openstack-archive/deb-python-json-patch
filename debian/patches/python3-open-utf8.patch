@@ -1,0 +1,23 @@
+Description: Fix open file using utf-8 for python3
+ Use io.open() to open jsonpatch.py with utf-8 encoding in setup.py so it works
+ in both Python 2 and 3.
+Bug-Ubuntu: https://bugs.launchpad.net/bug/1185739
+Author: Michael Bienia <geser@ubuntu.com>
+Forwarded: no
+Date: Mon, 03 Jun 2013 12:32:23 +0100
+
+Index: python-json-patch-1.0/setup.py
+===================================================================
+--- python-json-patch-1.0.orig/setup.py	2013-04-03 15:54:04.000000000 +0200
++++ python-json-patch-1.0/setup.py	2013-05-30 10:36:31.000000000 +0200
+@@ -9,8 +9,9 @@
+ except ImportError:
+     from distutils.core import setup
+     has_setuptools = False
++import io
+ 
+-src = open('jsonpatch.py').read()
++src = io.open('jsonpatch.py', encoding='utf-8').read()
+ metadata = dict(re.findall("__([a-z]+)__ = '([^']+)'", src))
+ docstrings = re.findall('"""([^"]*)"""', src, re.MULTILINE | re.DOTALL)
+ 

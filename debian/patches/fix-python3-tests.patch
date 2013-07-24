@@ -1,0 +1,49 @@
+Description: use unicode literals and update tests
+ Use io.open() to open jsonpatch.py with utf-8 encoding in setup.py so it works
+ in both Python 2 and 3.
+Bug-Ubuntu:  (lp: #1185739)
+
+Author: Stefan Kögl <stefan@skoegl.net>
+Date:   Sat Apr 13 23:05:36 2013 +0200
+
+diff --git a/jsonpatch.py b/jsonpatch.py
+index ca21384..e115273 100644
+--- a/jsonpatch.py
++++ b/jsonpatch.py
+@@ -30,6 +30,8 @@
+ # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ #
+ 
++from __future__ import unicode_literals
++
+ """ Apply JSON-Patches (RFC 6902) """
+ 
+ # Will be parsed by setup.py to determine package metadata
+@@ -87,10 +89,10 @@ def apply_patch(doc, patch, in_place=False):
+     >>> other = apply_patch(doc, [{'op': 'add', 'path': '/baz', 'value': 'qux'}])
+     >>> doc is not other
+     True
+-    >>> other
+-    {'foo': 'bar', 'baz': 'qux'}
+-    >>> apply_patch(doc, [{'op': 'add', 'path': '/baz', 'value': 'qux'}], in_place=True)
+-    {'foo': 'bar', 'baz': 'qux'}
++    >>> other == {'foo': 'bar', 'baz': 'qux'}
++    True
++    >>> apply_patch(doc, [{'op': 'add', 'path': '/baz', 'value': 'qux'}], in_place=True) == {'foo': 'bar', 'baz': 'qux'}
++    True
+     >>> doc == other
+     True
+     """
+diff --git a/tests.py b/tests.py
+index 8b51987..d6506e1 100755
+--- a/tests.py
++++ b/tests.py
+@@ -1,6 +1,8 @@
+ #!/usr/bin/env python
+ # -*- coding: utf-8 -*-
+ 
++from __future__ import unicode_literals
++
+ import doctest
+ import unittest
+ import jsonpatch
