@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from __future__ import unicode_literals
+
 import doctest
 import unittest
 import jsonpatch
@@ -53,6 +55,11 @@ class ApplyPatchTestCase(unittest.TestCase):
         obj = {'foo': 'bar', 'baz': 'qux'}
         res = jsonpatch.apply_patch(obj, [{'op': 'replace', 'path': '/baz', 'value': 'boo'}])
         self.assertTrue(res['baz'], 'boo')
+
+    def test_replace_whole_document(self):
+        obj = {'foo': 'bar'}
+        res = jsonpatch.apply_patch(obj, [{'op': 'replace', 'path': '', 'value': {'baz': 'qux'}}])
+        self.assertTrue(res['baz'], 'qux')
 
     def test_replace_array_item(self):
         obj = {'foo': ['bar', 'qux', 'baz']}

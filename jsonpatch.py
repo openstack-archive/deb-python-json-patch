@@ -30,11 +30,13 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+from __future__ import unicode_literals
+
 """ Apply JSON-Patches (RFC 6902) """
 
 # Will be parsed by setup.py to determine package metadata
 __author__ = 'Stefan Kögl <stefan@skoegl.net>'
-__version__ = '1.0'
+__version__ = '1.1'
 __website__ = 'https://github.com/stefankoegl/python-json-patch'
 __license__ = 'Modified BSD License'
 
@@ -87,10 +89,10 @@ def apply_patch(doc, patch, in_place=False):
     >>> other = apply_patch(doc, [{'op': 'add', 'path': '/baz', 'value': 'qux'}])
     >>> doc is not other
     True
-    >>> other
-    {'foo': 'bar', 'baz': 'qux'}
-    >>> apply_patch(doc, [{'op': 'add', 'path': '/baz', 'value': 'qux'}], in_place=True)
-    {'foo': 'bar', 'baz': 'qux'}
+    >>> other == {'foo': 'bar', 'baz': 'qux'}
+    True
+    >>> apply_patch(doc, [{'op': 'add', 'path': '/baz', 'value': 'qux'}], in_place=True) == {'foo': 'bar', 'baz': 'qux'}
+    True
     >>> doc == other
     True
     """
@@ -391,6 +393,9 @@ class ReplaceOperation(PatchOperation):
     def apply(self, obj):
         value = self.operation["value"]
         subobj, part = self.pointer.to_last(obj)
+
+        if part is None:
+            return value
 
         if isinstance(subobj, list):
             if part > len(subobj) or part < 0:
