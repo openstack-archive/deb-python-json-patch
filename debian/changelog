@@ -1,6 +1,7 @@
 python-json-patch (1.0-1) unstable; urgency=low
 
   * New upstream release.
+  * Removes python3 unit test patch applied upstream.
 
  -- Thomas Goirand <zigo@debian.org>  Wed, 11 Sep 2013 12:04:57 +0800
 
