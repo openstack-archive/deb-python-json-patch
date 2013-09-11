@@ -1,4 +1,4 @@
-python-json-patch (1.0-1) unstable; urgency=low
+python-json-patch (1.1-1) unstable; urgency=low
 
   * New upstream release.
   * Removes python3 unit test patch applied upstream.
