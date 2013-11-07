@@ -3,9 +3,11 @@
 
 from __future__ import unicode_literals
 
+import json
 import doctest
 import unittest
 import jsonpatch
+import jsonpointer
 import sys
 
 
@@ -61,6 +63,12 @@ class ApplyPatchTestCase(unittest.TestCase):
         res = jsonpatch.apply_patch(obj, [{'op': 'replace', 'path': '', 'value': {'baz': 'qux'}}])
         self.assertTrue(res['baz'], 'qux')
 
+    def test_add_replace_whole_document(self):
+        obj = {'foo': 'bar'}
+        new_obj = {'baz': 'qux'}
+        res = jsonpatch.apply_patch(obj, [{'op': 'add', 'path': '', 'value': new_obj}])
+        self.assertTrue(res, new_obj)
+
     def test_replace_array_item(self):
         obj = {'foo': ['bar', 'qux', 'baz']}
         res = jsonpatch.apply_patch(obj, [{'op': 'replace', 'path': '/foo/1',
@@ -110,6 +118,11 @@ class ApplyPatchTestCase(unittest.TestCase):
         obj =  {'baz': 'qux', 'foo': ['a', 2, 'c']}
         jsonpatch.apply_patch(obj, [{'op': 'test', 'path': '/baz', 'value': 'qux'},
                                     {'op': 'test', 'path': '/foo/1', 'value': 2}])
+
+    def test_test_whole_obj(self):
+        obj =  {'baz': 1}
+        jsonpatch.apply_patch(obj, [{'op': 'test', 'path': '', 'value': obj}])
+
 
     def test_test_error(self):
         obj =  {'bar': 'qux'}
@@ -185,6 +198,25 @@ class EqualityTestCase(unittest.TestCase):
         self.assertNotEqual(hash(patch1), hash(patch2))
 
 
+    def test_patch_neq_other_objs(self):
+        p = [{'op': 'test', 'path': '/test'}]
+        patch = jsonpatch.JsonPatch(p)
+        # a patch will always compare not-equal to objects of other types
+        self.assertFalse(patch == p)
+        self.assertFalse(patch == None)
+
+        # also a patch operation will always compare
+        # not-equal to objects of other types
+        op = jsonpatch.PatchOperation(p[0])
+        self.assertFalse(op == p[0])
+        self.assertFalse(op == None)
+
+    def test_str(self):
+        patch_obj = [ { "op": "add", "path": "/child", "value": { "grandchild": { } } } ]
+        patch = jsonpatch.JsonPatch(patch_obj)
+
+        self.assertEqual(json.dumps(patch_obj), str(patch))
+        self.assertEqual(json.dumps(patch_obj), patch.to_string())
 
 
 
@@ -248,8 +280,57 @@ class MakePatchTestCase(unittest.TestCase):
         self.assertEqual(expected, res)
 
 
+class InvalidInputTests(unittest.TestCase):
+
+    def test_missing_op(self):
+        # an "op" member is required
+        src = {"foo": "bar"}
+        patch_obj = [ { "path": "/child", "value": { "grandchild": { } } } ]
+        self.assertRaises(jsonpatch.JsonPatchException, jsonpatch.apply_patch, src, patch_obj)
+
+
+    def test_invalid_op(self):
+        # "invalid" is not a valid operation
+        src = {"foo": "bar"}
+        patch_obj = [ { "op": "invalid", "path": "/child", "value": { "grandchild": { } } } ]
+        self.assertRaises(jsonpatch.JsonPatchException, jsonpatch.apply_patch, src, patch_obj)
+
+
+class ConflictTests(unittest.TestCase):
+
+    def test_remove_indexerror(self):
+        src = {"foo": [1, 2]}
+        patch_obj = [ { "op": "remove", "path": "/foo/10"} ]
+        self.assertRaises(jsonpatch.JsonPatchConflict, jsonpatch.apply_patch, src, patch_obj)
+
+    def test_remove_keyerror(self):
+        src = {"foo": [1, 2]}
+        patch_obj = [ { "op": "remove", "path": "/foo/b"} ]
+        self.assertRaises(jsonpointer.JsonPointerException, jsonpatch.apply_patch, src, patch_obj)
+
+    def test_insert_oob(self):
+        src = {"foo": [1, 2]}
+        patch_obj = [ { "op": "add", "path": "/foo/10", "value": 1} ]
+        self.assertRaises(jsonpatch.JsonPatchConflict, jsonpatch.apply_patch, src, patch_obj)
+
+    def test_move_into_child(self):
+        src = {"foo": {"bar": {"baz": 1}}}
+        patch_obj = [ { "op": "move", "from": "/foo", "path": "/foo/bar" } ]
+        self.assertRaises(jsonpatch.JsonPatchException, jsonpatch.apply_patch, src, patch_obj)
+
+    def test_replace_oob(self):
+        src = {"foo": [1, 2]}
+        patch_obj = [ { "op": "replace", "path": "/foo/10", "value": 10} ]
+        self.assertRaises(jsonpatch.JsonPatchConflict, jsonpatch.apply_patch, src, patch_obj)
+
+    def test_replace_missing(self):
+        src = {"foo": 1}
+        patch_obj = [ { "op": "replace", "path": "/bar", "value": 10} ]
+        self.assertRaises(jsonpatch.JsonPatchConflict, jsonpatch.apply_patch, src, patch_obj)
+
+
+
 modules = ['jsonpatch']
-coverage_modules = []
 
 
 def get_suite():
@@ -258,6 +339,8 @@ def get_suite():
     suite.addTest(unittest.makeSuite(ApplyPatchTestCase))
     suite.addTest(unittest.makeSuite(EqualityTestCase))
     suite.addTest(unittest.makeSuite(MakePatchTestCase))
+    suite.addTest(unittest.makeSuite(InvalidInputTests))
+    suite.addTest(unittest.makeSuite(ConflictTests))
     return suite
 
 
@@ -265,33 +348,11 @@ suite = get_suite()
 
 for module in modules:
     m = __import__(module, fromlist=[module])
-    coverage_modules.append(m)
     suite.addTest(doctest.DocTestSuite(m))
 
 runner = unittest.TextTestRunner(verbosity=1)
-
-try:
-    import coverage
-except ImportError:
-    coverage = None
-
-if coverage is not None:
-    coverage.erase()
-    coverage.start()
 
 result = runner.run(suite)
 
 if not result.wasSuccessful():
     sys.exit(1)
-
-if coverage is not None:
-    coverage.stop()
-    coverage.report(coverage_modules)
-    coverage.erase()
-
-if coverage is None:
-    sys.stderr.write("""
-No coverage reporting done (Python module "coverage" is missing)
-Please install the python-coverage package to get coverage reporting.
-""")
-    sys.stderr.flush()

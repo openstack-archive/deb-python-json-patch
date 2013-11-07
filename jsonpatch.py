@@ -36,12 +36,14 @@ from __future__ import unicode_literals
 
 # Will be parsed by setup.py to determine package metadata
 __author__ = 'Stefan Kögl <stefan@skoegl.net>'
-__version__ = '1.1'
+__version__ = '1.3'
 __website__ = 'https://github.com/stefankoegl/python-json-patch'
 __license__ = 'Modified BSD License'
 
 import copy
 import sys
+import operator
+import collections
 
 import json
 
@@ -67,6 +69,41 @@ class JsonPatchConflict(JsonPatchException):
 
 class JsonPatchTestFailed(JsonPatchException, AssertionError):
     """ A Test operation failed """
+
+
+def multidict(ordered_pairs):
+    """Convert duplicate keys values to lists."""
+    # read all values into lists
+    d = collections.defaultdict(list)
+    for k, v in ordered_pairs:
+        d[k].append(v)
+
+    # unpack lists that have only 1 item
+    for k, v in d.items():
+        if len(v) == 1:
+            d[k] = v[0]
+    return dict(d)
+
+
+def get_loadjson():
+    """ adds the object_pairs_hook parameter to json.load when possible
+
+    The "object_pairs_hook" parameter is used to handle duplicate keys when
+    loading a JSON object. This parameter does not exist in Python 2.6. This
+    methods returns an unmodified json.load for Python 2.6 and a partial
+    function with object_pairs_hook set to multidict for Python versions that
+    support the parameter. """
+
+    import inspect
+    import functools
+
+    argspec = inspect.getargspec(json.load)
+    if 'object_pairs_hook' not in argspec.args:
+        return json.load
+
+    return functools.partial(json.load, object_pairs_hook=multidict)
+
+json.load = get_loadjson()
 
 
 def apply_patch(doc, patch, in_place=False):
@@ -195,14 +232,15 @@ class JsonPatch(object):
 
 
     def __hash__(self):
-        return hash(tuple(self._get_operation(op) for op in self.patch))
+        return hash(tuple(self._ops))
 
 
     def __eq__(self, other):
         if not isinstance(other, JsonPatch):
             return False
 
-        return self.patch == other.patch
+        return len(list(self._ops)) == len(list(other._ops)) and \
+               all(map(operator.eq, self._ops, other._ops))
 
 
     @classmethod
@@ -282,6 +320,10 @@ class JsonPatch(object):
         """Returns patch set as JSON string."""
         return json.dumps(self.patch)
 
+    @property
+    def _ops(self):
+        return map(self._get_operation, self.patch)
+
     def apply(self, obj, in_place=False):
         """Applies the patch to given object.
 
@@ -298,8 +340,7 @@ class JsonPatch(object):
         if not in_place:
             obj = copy.deepcopy(obj)
 
-        for operation in self.patch:
-            operation = self._get_operation(operation)
+        for operation in self._ops:
             obj = operation.apply(obj)
 
         return obj
@@ -309,6 +350,10 @@ class JsonPatch(object):
             raise JsonPatchException("Operation does not contain 'op' member")
 
         op = operation['op']
+
+        if not isinstance(op, basestring):
+            raise JsonPatchException("Operation must be a string")
+
         if op not in self.operations:
             raise JsonPatchException("Unknown operation '%s'" % op)
 
@@ -348,7 +393,7 @@ class RemoveOperation(PatchOperation):
         subobj, part = self.pointer.to_last(obj)
         try:
             del subobj[part]
-        except KeyError as ex:
+        except IndexError as ex:
             raise JsonPatchConflict(str(ex))
 
         return obj
@@ -359,7 +404,12 @@ class AddOperation(PatchOperation):
 
     def apply(self, obj):
         value = self.operation["value"]
-        subobj, part = self.pointer.to_last(obj, None)
+        subobj, part = self.pointer.to_last(obj)
+
+        # type is already checked in to_last(), so we assert here
+        # for consistency
+        assert isinstance(subobj, list) or isinstance(subobj, dict), \
+            "invalid document type %s" (type(doc),)
 
         if isinstance(subobj, list):
 
@@ -380,10 +430,6 @@ class AddOperation(PatchOperation):
             else:
                 subobj[part] = value
 
-        else:
-            raise JsonPatchConflict("can't add to type '%s'"
-                                    "" % subobj.__class__.__name__)
-
         return obj
 
 
@@ -393,6 +439,11 @@ class ReplaceOperation(PatchOperation):
     def apply(self, obj):
         value = self.operation["value"]
         subobj, part = self.pointer.to_last(obj)
+
+        # type is already checked in to_last(), so we assert here
+        # for consistency
+        assert isinstance(subobj, list) or isinstance(subobj, dict), \
+            "invalid document type %s" (type(doc),)
 
         if part is None:
             return value
@@ -406,10 +457,6 @@ class ReplaceOperation(PatchOperation):
                 raise JsonPatchConflict("can't replace non-existant object '%s'"
                                         "" % part)
 
-        else:
-            raise JsonPatchConflict("can't replace in type '%s'"
-                                    "" % subobj.__class__.__name__)
-
         subobj[part] = value
         return obj
 
@@ -422,7 +469,7 @@ class MoveOperation(PatchOperation):
         subobj, part = from_ptr.to_last(obj)
         value = subobj[part]
 
-        if from_ptr.contains(self.pointer):
+        if self.pointer.contains(from_ptr):
             raise JsonPatchException('Cannot move values into its own children')
 
         obj = RemoveOperation({'op': 'remove', 'path': self.operation['from']}).apply(obj)
