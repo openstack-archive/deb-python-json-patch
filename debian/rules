@@ -24,6 +24,10 @@ override_dh_auto_install:
 		python$$pyvers setup.py install --install-layout=deb \
 			--root $(CURDIR)/debian/python3-json-patch; \
 	done
+	mv $(CURDIR)/debian/python-json-patch/usr/bin/jsondiff $(CURDIR)/debian/python-json-patch/usr/bin/python2-jsondiff
+	mv $(CURDIR)/debian/python-json-patch/usr/bin/jsonpatch $(CURDIR)/debian/python-json-patch/usr/bin/python2-jsonpatch
+	mv $(CURDIR)/debian/python3-json-patch/usr/bin/jsondiff $(CURDIR)/debian/python3-json-patch/usr/bin/python3-jsondiff
+	mv $(CURDIR)/debian/python3-json-patch/usr/bin/jsonpatch $(CURDIR)/debian/python3-json-patch/usr/bin/python3-jsonpatch
 
 override_dh_auto_clean:
 	dh_auto_clean

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = "remove" ] ; then
+	update-alternatives --remove jsondiff /usr/bin/python2-jsondiff
+	update-alternatives --remove jsonpatch /usr/bin/python2-jsonpatch
+fi
+
+#DEBHELPER#
+
+exit 0

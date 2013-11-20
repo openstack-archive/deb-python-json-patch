@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = "configure" ] ; then
+	update-alternatives --install /usr/bin/jsondiff jsondiff /usr/bin/python3-jsondiff 200
+	update-alternatives --install /usr/bin/jsonpatch jsonpatch /usr/bin/python3-jsonpatch 200
+fi
+
+#DEBHELPER#
+
+exit 0
