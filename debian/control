@@ -72,6 +72,8 @@ Description: library to apply JSON patches - python 3.x
  This package provides the Python 3.x module.
 
 Package: python-json-patch
+Section: oldlibs
+Priority: extra
 Architecture: all
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: python-jsonpatch, ${misc:Depends}
@@ -96,6 +98,8 @@ Description: library to apply JSON patches - python 2.x transitional package
  This package is a transitional package to python-jsonpatch.
 
 Package: python3-json-patch
+Section: oldlibs
+Priority: extra
 Architecture: all
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: python3-jsonpatch, ${misc:Depends}
