@@ -1,6 +1,7 @@
 python-json-patch (1.3-4) unstable; urgency=medium
 
   * Fixes Breaks / Replaces so that it works with backports too.
+    (Closes: #732365).
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 09 Dec 2013 23:38:04 +0800
 
