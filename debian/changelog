@@ -1,3 +1,10 @@
+python-json-patch (1.3-5) unstable; urgency=medium
+
+  * Rebuilt so that python3-jsonpatch doesn't depend on Python 3.3.
+    (Closes: #751645).
+
+ -- Thomas Goirand <zigo@debian.org>  Sun, 15 Jun 2014 16:11:01 +0000
+
 python-json-patch (1.3-4) unstable; urgency=medium
 
   * Fixes Breaks / Replaces so that it works with backports too.
