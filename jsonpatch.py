@@ -30,33 +30,43 @@
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 
+""" Apply JSON-Patches (RFC 6902) """
+
 from __future__ import unicode_literals
 
-""" Apply JSON-Patches (RFC 6902) """
+import collections
+import copy
+import functools
+import inspect
+import itertools
+import json
+import sys
+
+try:
+    from collections.abc import MutableMapping, MutableSequence
+except ImportError:
+    from collections import MutableMapping, MutableSequence
+
+from jsonpointer import JsonPointer, JsonPointerException
 
 # Will be parsed by setup.py to determine package metadata
 __author__ = 'Stefan Kögl <stefan@skoegl.net>'
-__version__ = '1.3'
+__version__ = '1.9'
 __website__ = 'https://github.com/stefankoegl/python-json-patch'
 __license__ = 'Modified BSD License'
 
-import copy
-import sys
-import operator
-import collections
 
-import json
-
-import jsonpointer
-
+# pylint: disable=E0611,W0404
 if sys.version_info >= (3, 0):
-    basestring = (bytes, str)
+    basestring = (bytes, str)  # pylint: disable=C0103,W0622
 
-
-JsonPointerException = jsonpointer.JsonPointerException
 
 class JsonPatchException(Exception):
     """Base Json Patch exception"""
+
+
+class InvalidJsonPatch(JsonPatchException):
+    """ Raised if an invalid JSON Patch is created """
 
 
 class JsonPatchConflict(JsonPatchException):
@@ -67,6 +77,7 @@ class JsonPatchConflict(JsonPatchException):
     - etc.
     """
 
+
 class JsonPatchTestFailed(JsonPatchException, AssertionError):
     """ A Test operation failed """
 
@@ -74,15 +85,15 @@ class JsonPatchTestFailed(JsonPatchException, AssertionError):
 def multidict(ordered_pairs):
     """Convert duplicate keys values to lists."""
     # read all values into lists
-    d = collections.defaultdict(list)
-    for k, v in ordered_pairs:
-        d[k].append(v)
+    mdict = collections.defaultdict(list)
+    for key, value in ordered_pairs:
+        mdict[key].append(value)
 
-    # unpack lists that have only 1 item
-    for k, v in d.items():
-        if len(v) == 1:
-            d[k] = v[0]
-    return dict(d)
+    return dict(
+        # unpack lists that have only 1 item
+        (key, values[0] if len(values) == 1 else values)
+        for key, values in mdict.items()
+    )
 
 
 def get_loadjson():
@@ -93,9 +104,6 @@ def get_loadjson():
     methods returns an unmodified json.load for Python 2.6 and a partial
     function with object_pairs_hook set to multidict for Python versions that
     support the parameter. """
-
-    import inspect
-    import functools
 
     argspec = inspect.getargspec(json.load)
     if 'object_pairs_hook' not in argspec.args:
@@ -123,12 +131,14 @@ def apply_patch(doc, patch, in_place=False):
     :rtype: dict
 
     >>> doc = {'foo': 'bar'}
-    >>> other = apply_patch(doc, [{'op': 'add', 'path': '/baz', 'value': 'qux'}])
+    >>> patch = [{'op': 'add', 'path': '/baz', 'value': 'qux'}]
+    >>> other = apply_patch(doc, patch)
     >>> doc is not other
     True
     >>> other == {'foo': 'bar', 'baz': 'qux'}
     True
-    >>> apply_patch(doc, [{'op': 'add', 'path': '/baz', 'value': 'qux'}], in_place=True) == {'foo': 'bar', 'baz': 'qux'}
+    >>> patch = [{'op': 'add', 'path': '/baz', 'value': 'qux'}]
+    >>> apply_patch(doc, patch, in_place=True) == {'foo': 'bar', 'baz': 'qux'}
     True
     >>> doc == other
     True
@@ -139,6 +149,7 @@ def apply_patch(doc, patch, in_place=False):
     else:
         patch = JsonPatch(patch)
     return patch.apply(doc, in_place)
+
 
 def make_patch(src, dst):
     """Generates patch by comparing of two document objects. Actually is
@@ -230,18 +241,16 @@ class JsonPatch(object):
     def __iter__(self):
         return iter(self.patch)
 
-
     def __hash__(self):
         return hash(tuple(self._ops))
-
 
     def __eq__(self, other):
         if not isinstance(other, JsonPatch):
             return False
+        return self._ops == other._ops
 
-        return len(list(self._ops)) == len(list(other._ops)) and \
-               all(map(operator.eq, self._ops, other._ops))
-
+    def __ne__(self, other):
+        return not(self == other)
 
     @classmethod
     def from_string(cls, patch_str):
@@ -279,42 +288,38 @@ class JsonPatch(object):
         def compare_values(path, value, other):
             if value == other:
                 return
-            if isinstance(value, dict) and isinstance(other, dict):
-                for operation in compare_dict(path, value, other):
+            if isinstance(value, MutableMapping) and \
+                    isinstance(other, MutableMapping):
+                for operation in compare_dicts(path, value, other):
                     yield operation
-            elif isinstance(value, list) and isinstance(other, list):
-                for operation in compare_list(path, value, other):
+            elif isinstance(value, MutableSequence) and \
+                    isinstance(other, MutableSequence):
+                for operation in compare_lists(path, value, other):
                     yield operation
             else:
-                yield {'op': 'replace', 'path': '/'.join(path), 'value': other}
+                ptr = JsonPointer.from_parts(path)
+                yield {'op': 'replace', 'path': ptr.path, 'value': other}
 
-        def compare_dict(path, src, dst):
+        def compare_dicts(path, src, dst):
             for key in src:
                 if key not in dst:
-                    yield {'op': 'remove', 'path': '/'.join(path + [key])}
+                    ptr = JsonPointer.from_parts(path + [key])
+                    yield {'op': 'remove', 'path': ptr.path}
                     continue
                 current = path + [key]
                 for operation in compare_values(current, src[key], dst[key]):
                     yield operation
             for key in dst:
                 if key not in src:
-                    yield {'op': 'add', 'path': '/'.join(path + [key]), 'value': dst[key]}
+                    ptr = JsonPointer.from_parts(path + [key])
+                    yield {'op': 'add',
+                           'path': ptr.path,
+                           'value': dst[key]}
 
-        def compare_list(path, src, dst):
-            lsrc, ldst = len(src), len(dst)
-            for idx in range(min(lsrc, ldst)):
-                current = path + [str(idx)]
-                for operation in compare_values(current, src[idx], dst[idx]):
-                    yield operation
-            if lsrc < ldst:
-                for idx in range(lsrc, ldst):
-                    current = path + [str(idx)]
-                    yield {'op': 'add', 'path': '/'.join(current), 'value': dst[idx]}
-            elif lsrc > ldst:
-                for idx in reversed(range(ldst, lsrc)):
-                    yield {'op': 'remove', 'path': '/'.join(path + [str(idx)])}
+        def compare_lists(path, src, dst):
+            return _compare_lists(path, src, dst)
 
-        return cls(list(compare_dict([''], src, dst)))
+        return cls(list(compare_values([], src, dst)))
 
     def to_string(self):
         """Returns patch set as JSON string."""
@@ -322,7 +327,7 @@ class JsonPatch(object):
 
     @property
     def _ops(self):
-        return map(self._get_operation, self.patch)
+        return tuple(map(self._get_operation, self.patch))
 
     def apply(self, obj, in_place=False):
         """Applies the patch to given object.
@@ -347,19 +352,18 @@ class JsonPatch(object):
 
     def _get_operation(self, operation):
         if 'op' not in operation:
-            raise JsonPatchException("Operation does not contain 'op' member")
+            raise InvalidJsonPatch("Operation does not contain 'op' member")
 
         op = operation['op']
 
         if not isinstance(op, basestring):
-            raise JsonPatchException("Operation must be a string")
+            raise InvalidJsonPatch("Operation must be a string")
 
         if op not in self.operations:
-            raise JsonPatchException("Unknown operation '%s'" % op)
+            raise InvalidJsonPatch("Unknown operation {0!r}".format(op))
 
         cls = self.operations[op]
         return cls(operation)
-
 
 
 class PatchOperation(object):
@@ -367,23 +371,23 @@ class PatchOperation(object):
 
     def __init__(self, operation):
         self.location = operation['path']
-        self.pointer = jsonpointer.JsonPointer(self.location)
+        self.pointer = JsonPointer(self.location)
         self.operation = operation
 
     def apply(self, obj):
         """Abstract method that applies patch operation to specified object."""
         raise NotImplementedError('should implement patch operation.')
 
-
     def __hash__(self):
         return hash(frozenset(self.operation.items()))
-
 
     def __eq__(self, other):
         if not isinstance(other, PatchOperation):
             return False
-
         return self.operation == other.operation
+
+    def __ne__(self, other):
+        return not(self == other)
 
 
 class RemoveOperation(PatchOperation):
@@ -393,8 +397,9 @@ class RemoveOperation(PatchOperation):
         subobj, part = self.pointer.to_last(obj)
         try:
             del subobj[part]
-        except IndexError as ex:
-            raise JsonPatchConflict(str(ex))
+        except (KeyError, IndexError) as ex:
+            msg = "can't remove non-existent object '{0}'".format(part)
+            raise JsonPatchConflict(msg)
 
         return obj
 
@@ -403,32 +408,32 @@ class AddOperation(PatchOperation):
     """Adds an object property or an array element."""
 
     def apply(self, obj):
-        value = self.operation["value"]
+        try:
+            value = self.operation["value"]
+        except KeyError as ex:
+            raise InvalidJsonPatch(
+                "The operation does not contain a 'value' member")
+
         subobj, part = self.pointer.to_last(obj)
 
-        # type is already checked in to_last(), so we assert here
-        # for consistency
-        assert isinstance(subobj, list) or isinstance(subobj, dict), \
-            "invalid document type %s" (type(doc),)
-
-        if isinstance(subobj, list):
-
+        if isinstance(subobj, MutableSequence):
             if part == '-':
-                subobj.append(value)
+                subobj.append(value)  # pylint: disable=E1103
 
             elif part > len(subobj) or part < 0:
                 raise JsonPatchConflict("can't insert outside of list")
 
             else:
-                subobj.insert(part, value)
+                subobj.insert(part, value)  # pylint: disable=E1103
 
-        elif isinstance(subobj, dict):
+        elif isinstance(subobj, MutableMapping):
             if part is None:
-                # we're replacing the root
-                obj = value
-
+                obj = value  # we're replacing the root
             else:
                 subobj[part] = value
+
+        else:
+            raise TypeError("invalid document type {0}".format(type(subobj)))
 
         return obj
 
@@ -437,25 +442,27 @@ class ReplaceOperation(PatchOperation):
     """Replaces an object property or an array element by new value."""
 
     def apply(self, obj):
-        value = self.operation["value"]
-        subobj, part = self.pointer.to_last(obj)
+        try:
+            value = self.operation["value"]
+        except KeyError as ex:
+            raise InvalidJsonPatch(
+                "The operation does not contain a 'value' member")
 
-        # type is already checked in to_last(), so we assert here
-        # for consistency
-        assert isinstance(subobj, list) or isinstance(subobj, dict), \
-            "invalid document type %s" (type(doc),)
+        subobj, part = self.pointer.to_last(obj)
 
         if part is None:
             return value
 
-        if isinstance(subobj, list):
+        if isinstance(subobj, MutableSequence):
             if part > len(subobj) or part < 0:
                 raise JsonPatchConflict("can't replace outside of list")
 
-        elif isinstance(subobj, dict):
+        elif isinstance(subobj, MutableMapping):
             if not part in subobj:
-                raise JsonPatchConflict("can't replace non-existant object '%s'"
-                                        "" % part)
+                msg = "can't replace non-existent object '{0}'".format(part)
+                raise JsonPatchConflict(msg)
+        else:
+            raise TypeError("invalid document type {0}".format(type(subobj)))
 
         subobj[part] = value
         return obj
@@ -465,15 +472,33 @@ class MoveOperation(PatchOperation):
     """Moves an object property or an array element to new location."""
 
     def apply(self, obj):
-        from_ptr = jsonpointer.JsonPointer(self.operation['from'])
+        try:
+            from_ptr = JsonPointer(self.operation['from'])
+        except KeyError as ex:
+            raise InvalidJsonPatch(
+                "The operation does not contain a 'from' member")
+
         subobj, part = from_ptr.to_last(obj)
-        value = subobj[part]
+        try:
+            value = subobj[part]
+        except (KeyError, IndexError) as ex:
+            raise JsonPatchConflict(str(ex))
 
-        if self.pointer.contains(from_ptr):
-            raise JsonPatchException('Cannot move values into its own children')
+        if isinstance(subobj, MutableMapping) and \
+                self.pointer.contains(from_ptr):
+            raise JsonPatchConflict('Cannot move values into its own children')
 
-        obj = RemoveOperation({'op': 'remove', 'path': self.operation['from']}).apply(obj)
-        obj = AddOperation({'op': 'add', 'path': self.location, 'value': value}).apply(obj)
+        obj = RemoveOperation({
+            'op': 'remove',
+            'path': self.operation['from']
+        }).apply(obj)
+
+        obj = AddOperation({
+            'op': 'add',
+            'path': self.location,
+            'value': value
+        }).apply(obj)
+
         return obj
 
 
@@ -487,14 +512,19 @@ class TestOperation(PatchOperation):
                 val = subobj
             else:
                 val = self.pointer.walk(subobj, part)
-
         except JsonPointerException as ex:
             raise JsonPatchTestFailed(str(ex))
 
-        if 'value' in self.operation:
+        try:
             value = self.operation['value']
-            if val != value:
-                raise JsonPatchTestFailed('%s is not equal to tested value %s (types %s and %s)' % (val, value, type(val), type(value)))
+        except KeyError as ex:
+            raise InvalidJsonPatch(
+                "The operation does not contain a 'value' member")
+
+        if val != value:
+            msg = '{0} ({1}) is not equal to tested value {2} ({3})'
+            raise JsonPatchTestFailed(msg.format(val, type(val),
+                                                 value, type(value)))
 
         return obj
 
@@ -503,8 +533,251 @@ class CopyOperation(PatchOperation):
     """ Copies an object property or an array element to a new location """
 
     def apply(self, obj):
-        from_ptr = jsonpointer.JsonPointer(self.operation['from'])
+        try:
+            from_ptr = JsonPointer(self.operation['from'])
+        except KeyError as ex:
+            raise InvalidJsonPatch(
+                "The operation does not contain a 'from' member")
+
         subobj, part = from_ptr.to_last(obj)
-        value = copy.deepcopy(subobj[part])
-        obj = AddOperation({'op': 'add', 'path': self.location, 'value': value}).apply(obj)
+        try:
+            value = copy.deepcopy(subobj[part])
+        except (KeyError, IndexError) as ex:
+            raise JsonPatchConflict(str(ex))
+
+        obj = AddOperation({
+            'op': 'add',
+            'path': self.location,
+            'value': value
+        }).apply(obj)
+
         return obj
+
+
+def _compare_lists(path, src, dst):
+    """Compares two lists objects and return JSON patch about."""
+    return _optimize(_compare(path, src, dst, *_split_by_common_seq(src, dst)))
+
+
+def _longest_common_subseq(src, dst):
+    """Returns pair of ranges of longest common subsequence for the `src`
+    and `dst` lists.
+
+    >>> src = [1, 2, 3, 4]
+    >>> dst = [0, 1, 2, 3, 5]
+    >>> # The longest common subsequence for these lists is [1, 2, 3]
+    ... # which is located at (0, 3) index range for src list and (1, 4) for
+    ... # dst one. Tuple of these ranges we should get back.
+    ... assert ((0, 3), (1, 4)) == _longest_common_subseq(src, dst)
+    """
+    lsrc, ldst = len(src), len(dst)
+    drange = list(range(ldst))
+    matrix = [[0] * ldst for _ in range(lsrc)]
+    z = 0  # length of the longest subsequence
+    range_src, range_dst = None, None
+    for i, j in itertools.product(range(lsrc), drange):
+        if src[i] == dst[j]:
+            if i == 0 or j == 0:
+                matrix[i][j] = 1
+            else:
+                matrix[i][j] = matrix[i-1][j-1] + 1
+            if matrix[i][j] > z:
+                z = matrix[i][j]
+            if matrix[i][j] == z:
+                range_src = (i-z+1, i+1)
+                range_dst = (j-z+1, j+1)
+        else:
+            matrix[i][j] = 0
+    return range_src, range_dst
+
+
+def _split_by_common_seq(src, dst, bx=(0, -1), by=(0, -1)):
+    """Recursively splits the `dst` list onto two parts: left and right.
+    The left part contains differences on left from common subsequence,
+    same as the right part by for other side.
+
+    To easily understand the process let's take two lists: [0, 1, 2, 3] as
+    `src` and [1, 2, 4, 5] for `dst`. If we've tried to generate the binary tree
+    where nodes are common subsequence for both lists, leaves on the left
+    side are subsequence for `src` list and leaves on the right one for `dst`,
+    our tree would looks like::
+
+        [1, 2]
+       /     \
+    [0]       []
+             /  \
+          [3]   [4, 5]
+
+    This function generate the similar structure as flat tree, but without
+    nodes with common subsequences - since we're don't need them - only with
+    left and right leaves::
+
+        []
+       / \
+    [0]  []
+        / \
+     [3]  [4, 5]
+
+    The `bx` is the absolute range for currently processed subsequence of
+    `src` list.  The `by` means the same, but for the `dst` list.
+    """
+    # Prevent useless comparisons in future
+    bx = bx if bx[0] != bx[1] else None
+    by = by if by[0] != by[1] else None
+
+    if not src:
+        return [None, by]
+    elif not dst:
+        return [bx, None]
+
+    # note that these ranges are relative for processed sublists
+    x, y = _longest_common_subseq(src, dst)
+
+    if x is None or y is None:  # no more any common subsequence
+        return [bx, by]
+
+    return [_split_by_common_seq(src[:x[0]], dst[:y[0]],
+                                 (bx[0], bx[0] + x[0]),
+                                 (by[0], by[0] + y[0])),
+            _split_by_common_seq(src[x[1]:], dst[y[1]:],
+                                 (bx[0] + x[1], bx[0] + len(src)),
+                                 (bx[0] + y[1], bx[0] + len(dst)))]
+
+
+def _compare(path, src, dst, left, right):
+    """Same as :func:`_compare_with_shift` but strips emitted `shift` value."""
+    for op, _ in _compare_with_shift(path, src, dst, left, right, 0):
+        yield op
+
+
+def _compare_with_shift(path, src, dst, left, right, shift):
+    """Recursively compares differences from `left` and `right` sides
+    from common subsequences.
+
+    The `shift` parameter is used to store index shift which caused
+    by ``add`` and ``remove`` operations.
+
+    Yields JSON patch operations and list index shift.
+    """
+    if isinstance(left, MutableSequence):
+        for item, shift in _compare_with_shift(path, src, dst, *left,
+                                               shift=shift):
+            yield item, shift
+    elif left is not None:
+        for item, shift in _compare_left(path, src, left, shift):
+            yield item, shift
+
+    if isinstance(right, MutableSequence):
+        for item, shift in _compare_with_shift(path, src, dst, *right,
+                                               shift=shift):
+            yield item, shift
+    elif right is not None:
+        for item, shift in _compare_right(path, dst, right, shift):
+            yield item, shift
+
+
+def _compare_left(path, src, left, shift):
+    """Yields JSON patch ``remove`` operations for elements that are only
+    exists in the `src` list."""
+    start, end = left
+    if end == -1:
+        end = len(src)
+    # we need to `remove` elements from list tail to not deal with index shift
+    for idx in reversed(range(start + shift, end + shift)):
+        ptr = JsonPointer.from_parts(path + [str(idx)])
+        yield (
+            {'op': 'remove',
+             # yes, there should be any value field, but we'll use it
+             # to apply `move` optimization a bit later and will remove
+             # it in _optimize function.
+             'value': src[idx - shift],
+             'path': ptr.path,
+            },
+            shift - 1
+        )
+        shift -= 1
+
+
+def _compare_right(path, dst, right, shift):
+    """Yields JSON patch ``add`` operations for elements that are only
+    exists in the `dst` list"""
+    start, end = right
+    if end == -1:
+        end = len(dst)
+    for idx in range(start, end):
+        ptr = JsonPointer.from_parts(path + [str(idx)])
+        yield (
+            {'op': 'add', 'path': ptr.path, 'value': dst[idx]},
+            shift + 1
+        )
+        shift += 1
+
+
+def _optimize(operations):
+    """Optimizes operations which was produced by lists comparison.
+
+    Actually it does two kinds of optimizations:
+
+    1. Seeks pair of ``remove`` and ``add`` operations against the same path
+       and replaces them with ``replace`` operation.
+    2. Seeks pair of ``remove`` and ``add`` operations for the same value
+       and replaces them with ``move`` operation.
+    """
+    result = []
+    ops_by_path = {}
+    ops_by_value = {}
+    add_remove = set(['add', 'remove'])
+    for item in operations:
+        # could we apply "move" optimization for dict values?
+        hashable_value = not isinstance(item['value'],
+                                        (MutableMapping, MutableSequence))
+        if item['path'] in ops_by_path:
+            _optimize_using_replace(ops_by_path[item['path']], item)
+            continue
+        if hashable_value and item['value'] in ops_by_value:
+            prev_item = ops_by_value[item['value']]
+            # ensure that we processing pair of add-remove ops
+            if set([item['op'], prev_item['op']]) == add_remove:
+                _optimize_using_move(prev_item, item)
+                ops_by_value.pop(item['value'])
+                continue
+        result.append(item)
+        ops_by_path[item['path']] = item
+        if hashable_value:
+            ops_by_value[item['value']] = item
+
+    # cleanup
+    ops_by_path.clear()
+    ops_by_value.clear()
+    for item in result:
+        if item['op'] == 'remove':
+            item.pop('value')  # strip our hack
+        yield item
+
+
+def _optimize_using_replace(prev, cur):
+    """Optimises JSON patch by using ``replace`` operation instead of
+    ``remove`` and ``add`` against the same path."""
+    prev['op'] = 'replace'
+    if cur['op'] == 'add':
+        prev['value'] = cur['value']
+
+
+def _optimize_using_move(prev_item, item):
+    """Optimises JSON patch by using ``move`` operation instead of
+    ``remove` and ``add`` against the different paths but for the same value."""
+    prev_item['op'] = 'move'
+    move_from, move_to = [
+        (item['path'], prev_item['path']),
+        (prev_item['path'], item['path']),
+    ][item['op'] == 'add']
+    if item['op'] == 'add':  # first was remove then add
+        prev_item['from'] = move_from
+        prev_item['path'] = move_to
+    else:  # first was add then remove
+        head, move_from = move_from.rsplit('/', 1)
+        # since add operation was first it incremented
+        # overall index shift value. we have to fix this
+        move_from = int(move_from) - 1
+        prev_item['from'] = head + '/%d' % move_from
+        prev_item['path'] = move_to

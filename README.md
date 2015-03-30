@@ -11,9 +11,12 @@ See Sourcecode for Examples
 * Website: https://github.com/stefankoegl/python-json-patch
 * Repository: https://github.com/stefankoegl/python-json-patch.git
 * Documentation: https://python-json-patch.readthedocs.org/
+* PyPI: https://pypi.python.org/pypi/jsonpatch
+* Travis-CI: https://travis-ci.org/stefankoegl/python-json-patch
+* Coveralls: https://coveralls.io/r/stefankoegl/python-json-patch
 
 Running external tests
 ----------------------
-To run external tests (such as those from https://github.com/json-patch/json-patch-tests) use ext_test.py 
+To run external tests (such as those from https://github.com/json-patch/json-patch-tests) use ext_test.py
 
     ./ext_tests.py ../json-patch-tests/tests.json

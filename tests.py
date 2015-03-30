@@ -75,6 +75,12 @@ class ApplyPatchTestCase(unittest.TestCase):
                                            'value': 'boo'}])
         self.assertEqual(res['foo'], ['bar', 'boo', 'baz'])
 
+    def test_move_object_keyerror(self):
+        obj = {'foo': {'bar': 'baz'},
+               'qux': {'corge': 'grault'}}
+        patch_obj = [ {'op': 'move', 'from': '/foo/non-existent', 'path': '/qux/thud'} ]
+        self.assertRaises(jsonpatch.JsonPatchConflict, jsonpatch.apply_patch, obj, patch_obj)
+
     def test_move_object_key(self):
         obj = {'foo': {'bar': 'baz', 'waldo': 'fred'},
                'qux': {'corge': 'grault'}}
@@ -87,6 +93,18 @@ class ApplyPatchTestCase(unittest.TestCase):
         obj =  {'foo': ['all', 'grass', 'cows', 'eat']}
         res = jsonpatch.apply_patch(obj, [{'op': 'move', 'from': '/foo/1', 'path': '/foo/3'}])
         self.assertEqual(res, {'foo': ['all', 'cows', 'eat', 'grass']})
+
+    def test_move_array_item_into_other_item(self):
+        obj = [{"foo": []}, {"bar": []}]
+        patch = [{"op": "move", "from": "/0", "path": "/0/bar/0"}]
+        res = jsonpatch.apply_patch(obj, patch)
+        self.assertEqual(res, [{'bar': [{"foo": []}]}])
+
+    def test_copy_object_keyerror(self):
+        obj = {'foo': {'bar': 'baz'},
+               'qux': {'corge': 'grault'}}
+        patch_obj = [{'op': 'copy', 'from': '/foo/non-existent', 'path': '/qux/thud'}]
+        self.assertRaises(jsonpatch.JsonPatchConflict, jsonpatch.apply_patch, obj, patch_obj)
 
     def test_copy_object_key(self):
         obj = {'foo': {'bar': 'baz', 'waldo': 'fred'},
@@ -140,7 +158,9 @@ class ApplyPatchTestCase(unittest.TestCase):
 
     def test_test_noval_existing(self):
         obj =  {'bar': 'qux'}
-        jsonpatch.apply_patch(obj, [{'op': 'test', 'path': '/bar'}])
+        self.assertRaises(jsonpatch.InvalidJsonPatch,
+                          jsonpatch.apply_patch,
+                          obj, [{'op': 'test', 'path': '/bar'}])
 
 
     def test_test_noval_not_existing(self):
@@ -279,6 +299,58 @@ class MakePatchTestCase(unittest.TestCase):
                    }
         self.assertEqual(expected, res)
 
+    def test_should_just_add_new_item_not_rebuild_all_list(self):
+        src = {'foo': [1, 2, 3]}
+        dst = {'foo': [3, 1, 2, 3]}
+        patch = list(jsonpatch.make_patch(src, dst))
+        self.assertEqual(len(patch), 1)
+        self.assertEqual(patch[0]['op'], 'add')
+        res = jsonpatch.apply_patch(src, patch)
+        self.assertEqual(res, dst)
+
+    def test_use_replace_instead_of_remove_add(self):
+        src = {'foo': [1, 2, 3]}
+        dst = {'foo': [3, 2, 3]}
+        patch = list(jsonpatch.make_patch(src, dst))
+        self.assertEqual(len(patch), 1)
+        self.assertEqual(patch[0]['op'], 'replace')
+        res = jsonpatch.apply_patch(src, patch)
+        self.assertEqual(res, dst)
+
+    def test_use_move_instead_of_remove_add(self):
+        src = {'foo': [4, 1, 2, 3]}
+        dst = {'foo': [1, 2, 3, 4]}
+        patch = list(jsonpatch.make_patch(src, dst))
+        self.assertEqual(len(patch), 1)
+        self.assertEqual(patch[0]['op'], 'move')
+        res = jsonpatch.apply_patch(src, patch)
+        self.assertEqual(res, dst)
+
+    def test_use_move_instead_of_add_remove(self):
+        src = {'foo': [1, 2, 3]}
+        dst = {'foo': [3, 1, 2]}
+        patch = list(jsonpatch.make_patch(src, dst))
+        self.assertEqual(len(patch), 1)
+        self.assertEqual(patch[0]['op'], 'move')
+        res = jsonpatch.apply_patch(src, patch)
+        self.assertEqual(res, dst)
+
+    def test_escape(self):
+        src = {"x/y": 1}
+        dst = {"x/y": 2}
+        patch = jsonpatch.make_patch(src, dst)
+        self.assertEqual([{"path": "/x~1y", "value": 2, "op": "replace"}], patch.patch)
+        res = patch.apply(src)
+        self.assertEqual(res, dst)
+
+    def test_root_list(self):
+        """ Test making and applying a patch of the root is a list """
+        src = [{'foo': 'bar', 'boo': 'qux'}]
+        dst = [{'baz': 'qux', 'foo': 'boo'}]
+        patch = jsonpatch.make_patch(src, dst)
+        res = patch.apply(src)
+        self.assertEqual(res, dst)
+
 
 class InvalidInputTests(unittest.TestCase):
 
@@ -307,6 +379,11 @@ class ConflictTests(unittest.TestCase):
         src = {"foo": [1, 2]}
         patch_obj = [ { "op": "remove", "path": "/foo/b"} ]
         self.assertRaises(jsonpointer.JsonPointerException, jsonpatch.apply_patch, src, patch_obj)
+
+    def test_remove_keyerror_dict(self):
+        src = {'foo': {'bar': 'barz'}}
+        patch_obj = [ { "op": "remove", "path": "/foo/non-existent"} ]
+        self.assertRaises(jsonpatch.JsonPatchConflict, jsonpatch.apply_patch, src, patch_obj)
 
     def test_insert_oob(self):
         src = {"foo": [1, 2]}
