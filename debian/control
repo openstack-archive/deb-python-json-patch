@@ -24,7 +24,7 @@ Architecture: all
 Breaks: python-json-patch (<< 1.3-3~)
 Replaces: python-json-patch (<< 1.3-3~)
 Depends: python-json-pointer (>= 1.9), ${misc:Depends}, ${python:Depends}
-Description: library to apply JSON patches - python 2.x
+Description: library to apply JSON patches - Python 2.x
  Python-json-patch is a Python module (a library) to apply JSON Patches
  according to the IETF draft specification.
  .
@@ -50,7 +50,7 @@ Breaks: python3-json-patch (<< 1.3-3~)
 Replaces: python3-json-patch (<< 1.3-3~)
 Depends: python3-json-pointer (>= 1.9), ${misc:Depends}, ${python3:Depends}
 Recommends: ${python3:Recommends}
-Description: library to apply JSON patches - python 3.x
+Description: library to apply JSON patches - Python 3.x
  Python-json-patch is a Python module (a library) to apply JSON Patches
  according to the IETF draft specification.
  .
@@ -75,7 +75,7 @@ Section: oldlibs
 Priority: extra
 Architecture: all
 Depends: python-jsonpatch, ${misc:Depends}
-Description: library to apply JSON patches - python 2.x transitional package
+Description: library to apply JSON patches - Python 2.x transitional package
  Python-json-patch is a Python module (a library) to apply JSON Patches
  according to the IETF draft specification.
  .
@@ -101,7 +101,7 @@ Priority: extra
 Architecture: all
 Pre-Depends: dpkg (>= 1.15.6~)
 Depends: python3-jsonpatch, ${misc:Depends}
-Description: library to apply JSON patches - python 3.x transitional package
+Description: library to apply JSON patches - Python 3.x transitional package
  Python-json-patch is a Python module (a library) to apply JSON Patches
  according to the IETF draft specification.
  .
