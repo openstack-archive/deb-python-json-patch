@@ -29,6 +29,9 @@ override_dh_auto_install:
 	mv $(CURDIR)/debian/python3-jsonpatch/usr/bin/jsondiff $(CURDIR)/debian/python3-jsonpatch/usr/bin/python3-jsondiff
 	mv $(CURDIR)/debian/python3-jsonpatch/usr/bin/jsonpatch $(CURDIR)/debian/python3-jsonpatch/usr/bin/python3-jsonpatch
 
+override_dh_python3:
+	dh_python3 --shebang=/usr/bin/python3
+
 override_dh_auto_clean:
 	dh_auto_clean
 	rm -rf build
