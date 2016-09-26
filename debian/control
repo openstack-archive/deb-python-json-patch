@@ -15,8 +15,8 @@ Build-Depends: debhelper (>= 9),
 Build-Depends-Indep: python-json-pointer (>= 1.9),
                      python3-json-pointer (>= 1.9),
 Standards-Version: 3.9.4
-Vcs-Browser: https://anonscm.debian.org/cgit/openstack/python-json-patch.git/
-Vcs-Git: https://anonscm.debian.org/git/openstack/python-json-patch.git
+Vcs-Browser: https://git.openstack.org/cgit/openstack/deb-python-json-patch?h=debian%2Fnewton
+Vcs-Git: https://git.openstack.org/openstack/deb-python-json-patch -b debian/newton
 Homepage: https://github.com/stefankoegl/python-json-patch
 
 Package: python-jsonpatch
